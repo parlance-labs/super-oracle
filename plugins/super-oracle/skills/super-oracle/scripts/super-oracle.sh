@@ -34,8 +34,9 @@
 #   sees CODEX_SANDBOX / CODEX_SANDBOX_NETWORK_DISABLED. We approximate:
 #     - SUPER_ORACLE_SANDBOX=read-only|workspace-write|danger-full-access wins.
 #     - Else SUPER_ORACLE_BYPASS=1 forces bypass; =0 forces workspace-write.
-#     - Else if the parent set a known CODEX_SANDBOX value, reuse it (do not
-#       escalate); if only the network-disabled signal is set, use workspace-write.
+#     - Else if a Codex sandbox signal is present (CODEX_SANDBOX is a backend
+#       marker like "seatbelt", or the network-disabled flag is set), stay
+#       conservative with --sandbox workspace-write rather than escalating.
 #     - Else default to --dangerously-bypass-approvals-and-sandbox (unattended).
 #   For pure review/advice runs, prefer SUPER_ORACLE_SANDBOX=read-only.
 set -euo pipefail
@@ -75,10 +76,17 @@ if [ "$#" -ge 1 ] && [ "$1" != "-" ]; then
   fi
 fi
 
+# Clear any stale output now, before the failure-prone setup below (-n rewrite,
+# cd, run), so a failed invocation can never be mistaken for a prior success.
+: > "$OUTPUT" || { echo "ERROR: cannot write output: $OUTPUT" >&2; exit 1; }
+
 # --- Resolve permission posture (see header) -------------------------------
 valid_sandbox() {
   case "$1" in read-only|workspace-write|danger-full-access) return 0 ;; *) return 1 ;; esac
 }
+if [ -n "${SUPER_ORACLE_BYPASS:-}" ] && [ "$SUPER_ORACLE_BYPASS" != "0" ] && [ "$SUPER_ORACLE_BYPASS" != "1" ]; then
+  echo "ERROR: SUPER_ORACLE_BYPASS must be 0 or 1" >&2; exit 2
+fi
 POSTURE_ARGS=()
 if [ -n "${SUPER_ORACLE_SANDBOX:-}" ]; then
   valid_sandbox "$SUPER_ORACLE_SANDBOX" || {
@@ -88,9 +96,10 @@ elif [ "${SUPER_ORACLE_BYPASS:-}" = "1" ]; then
   POSTURE_ARGS=(--dangerously-bypass-approvals-and-sandbox)
 elif [ "${SUPER_ORACLE_BYPASS:-}" = "0" ]; then
   POSTURE_ARGS=(--sandbox workspace-write)
-elif [ -n "${CODEX_SANDBOX:-}" ] && valid_sandbox "$CODEX_SANDBOX"; then
-  POSTURE_ARGS=(--sandbox "$CODEX_SANDBOX")           # reuse parent's policy; do not escalate
-elif [ "${CODEX_SANDBOX_NETWORK_DISABLED:-}" = "1" ]; then
+elif [ -n "${CODEX_SANDBOX:-}" ] || [ "${CODEX_SANDBOX_NETWORK_DISABLED:-}" = "1" ]; then
+  # Parent already sandboxed us. CODEX_SANDBOX is a backend marker (e.g.
+  # "seatbelt"), not a --sandbox policy value, so treat it as a boolean signal
+  # and stay conservative instead of escalating to a full bypass.
   POSTURE_ARGS=(--sandbox workspace-write)
 else
   POSTURE_ARGS=(--dangerously-bypass-approvals-and-sandbox)   # unattended default
@@ -134,9 +143,6 @@ run() {
 [ -n "$WORKDIR" ] && cd "$WORKDIR"
 [ "$DISABLE_MCP" -eq 1 ] && MCP_STATE="off" || MCP_STATE="on"
 echo ">> super-oracle: model=$MODEL mcp=$MCP_STATE posture=${POSTURE_ARGS[*]} cwd=$(pwd)" >&2
-
-# Clear any stale output so a failed run can never be mistaken for success.
-: > "$OUTPUT"
 
 # Filter the harmless MCP auth/shutdown noise from displayed stderr. Patterns are
 # kept narrow so real errors still surface.

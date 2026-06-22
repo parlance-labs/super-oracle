@@ -14,7 +14,7 @@
   "interface": {
     "displayName": "Super Oracle",
     "shortDescription": "Fugu Ultra second-opinion oracle via codex-fugu",
-    "longDescription": "Ask a bundled codex-fugu (Sakana Fugu Ultra) oracle for deep code review, hard cross-file debugging, architecture and refactor planning, and research synthesis. Use it like a built-in oracle when you want a stronger reasoning model than the main agent.",
+    "longDescription": "Ask the bundled skill to invoke codex-fugu (Sakana Fugu Ultra, an external CLI prerequisite) as an oracle for deep code review, hard cross-file debugging, architecture and refactor planning, and research synthesis. Use it like a built-in oracle when you want a stronger reasoning model than the main agent.",
     "developerName": "Parlance Labs",
     "category": "Developer Tools",
     "capabilities": ["Read", "Write"],

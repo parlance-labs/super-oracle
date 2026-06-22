@@ -50,7 +50,8 @@ claude plugin install super-oracle@parlance-labs
 ```
 
 Or inside Claude Code: `/plugin marketplace add parlance-labs/super-oracle`
-then `/plugin install super-oracle@parlance-labs`.
+then `/plugin install super-oracle@parlance-labs`. Run `/reload-plugins` (or
+restart Claude Code) to activate it.
 
 ### Amp (or any agent that uses SKILL.md)
 
@@ -92,9 +93,10 @@ effective briefing.
 - **Permission posture is approximated, not inherited.** Codex does not expose
   the parent agent's approval/sandbox policy to child processes (only
   `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED`). The script uses
-  `SUPER_ORACLE_SANDBOX` if set; else reuses the parent's `CODEX_SANDBOX` value
-  when present (without escalating it); else defaults to
-  `--dangerously-bypass-approvals-and-sandbox`. Force with
+  `SUPER_ORACLE_SANDBOX` if set; else stays conservative
+  (`--sandbox workspace-write`) when it detects a Codex sandbox signal
+  (`CODEX_SANDBOX` is a backend marker like `seatbelt`, not a policy value); else
+  defaults to `--dangerously-bypass-approvals-and-sandbox`. Force with
   `SUPER_ORACLE_BYPASS=0|1`. For review-only runs, set
   `SUPER_ORACLE_SANDBOX=read-only`.
 - **Success = output produced, not exit code.** A broken/expired MCP server can

@@ -57,8 +57,9 @@ spawn its own subagents to parallelize. See `reference/briefing-template.md`.
   memory.
 - **Permission posture is approximated, not inherited.** codex does not expose
   the parent agent's approval/sandbox policy to child processes. The script uses
-  `SUPER_ORACLE_SANDBOX` if set; else reuses the parent's `CODEX_SANDBOX` value
-  when present (without escalating it); else defaults to
+  `SUPER_ORACLE_SANDBOX` if set; else stays conservative (`--sandbox
+  workspace-write`) when it detects a Codex sandbox signal (`CODEX_SANDBOX` /
+  `CODEX_SANDBOX_NETWORK_DISABLED`); else defaults to
   `--dangerously-bypass-approvals-and-sandbox` for unattended use. Force with
   `SUPER_ORACLE_BYPASS=0|1`. For review-only runs use `SUPER_ORACLE_SANDBOX=read-only`.
 
