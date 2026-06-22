@@ -3,8 +3,7 @@
 A **second-opinion oracle** for coding agents, powered by
 [Sakana Fugu Ultra](https://console.sakana.ai/models) (an orchestrator over
 frontier models) through the [`codex-fugu`](https://console.sakana.ai/get-started)
-CLI. Your main agent shells out to it for the hard 10% — subtle review, cross-file
-debugging, architecture calls — when you want a stronger model.
+CLI.
 
 It ships as a **skill** (works in any agent with a shell) packaged as a **plugin**
 for Codex and Claude Code.
