@@ -8,9 +8,6 @@ CLI.
 It ships as a **skill** (works in any agent with a shell) packaged as a **plugin**
 for Codex and Claude Code.
 
-> Invoke it *from* Codex, Claude Code, or Amp — not from inside a `codex-fugu`
-> session.
-
 ## Prerequisites
 
 - [`codex-fugu`](https://console.sakana.ai/get-started) installed and
@@ -53,7 +50,7 @@ git clone https://github.com/parlance-labs/super-oracle
 #   "amp.skills.path": "/path/to/super-oracle/plugins/super-oracle/skills"
 ```
 
-…or symlink `plugins/super-oracle/skills/super-oracle` into `~/.config/agents/skills/`.
+Or symlink `plugins/super-oracle/skills/super-oracle` into `~/.config/agents/skills/`.
 
 ## Use
 
@@ -79,8 +76,8 @@ It writes the answer to the `-o` file. See the skill's
 | `SUPER_ORACLE_SANDBOX=read-only` | Recommended for review-only runs. |
 | `SUPER_ORACLE_BYPASS=0\|1` | Force `workspace-write` / full bypass. |
 
-Always runs `fugu-ultra`. Expect minutes per call — don't wrap it in `timeout`.
+Always runs `fugu-ultra`. Expect minutes per call, so don't wrap it in `timeout`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
