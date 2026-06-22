@@ -1,37 +1,29 @@
 # Super Oracle
 
-A **second-opinion oracle** for coding agents, powered by **Sakana Fugu Ultra**
-(a learned orchestrator over frontier models) through the **`codex-fugu`** CLI.
+A **second-opinion oracle** for coding agents, powered by
+[Sakana Fugu Ultra](https://console.sakana.ai/models) (an orchestrator over
+frontier models) through the [`codex-fugu`](https://console.sakana.ai/get-started)
+CLI. Your main agent shells out to it for the hard 10% — subtle review, cross-file
+debugging, architecture calls — when you want a stronger model.
 
-Use it for the hard 10% of work — subtle code review, cross-file debugging,
-architecture and refactor decisions, and research synthesis — when you want a
-stronger reasoning model than your main agent. It is delivered as a **skill**, so
-it works in any coding agent that can run a shell, and it is **packaged as a
-plugin** for Codex and Claude Code.
+It ships as a **skill** (works in any agent with a shell) packaged as a **plugin**
+for Codex and Claude Code.
 
-Sakana recommends running Fugu through an OpenAI-style harness; `codex-fugu`
-(OpenAI Codex CLI wired to the Sakana API) is that harness, which is why this
-oracle is built on it.
-
-> **Driven by your main agent, not by `codex-fugu`.** This oracle is meant to be
-> invoked *from* Codex, Claude Code, or Amp — they shell out to `codex-fugu` to
-> get a second opinion from a stronger model. Do **not** run it from inside a
-> `codex-fugu` session; that would just ask Fugu Ultra to consult itself.
+> **Driven by your main agent, not by `codex-fugu`.** Invoke it *from* Codex,
+> Claude Code, or Amp — not from inside a `codex-fugu` session (that just asks
+> Fugu Ultra to consult itself).
 
 ## Prerequisites
 
 - [`codex-fugu`](https://console.sakana.ai/get-started) installed and
-  authenticated. From Sakana's
-  [Get Started docs](https://console.sakana.ai/get-started):
+  authenticated (see Sakana's
+  [Get Started docs](https://console.sakana.ai/get-started)):
   ```bash
   curl -fsSL https://sakana.ai/fugu/install | bash
   ```
-  This pins the Codex CLI, sets up the Sakana provider, and stores your
-  `SAKANA_API_KEY`. For non-interactive installs:
-  `curl -fsSL https://sakana.ai/fugu/install | SAKANA_API_KEY=… bash -s -- --yes`.
-- `codex-fugu` must be on the `PATH` of the process running your agent. Shell
-  installers update interactive shell startup files, so GUI-launched agents may
-  not see it — launch the agent from a shell where `codex-fugu --version` works.
+- `codex-fugu` must be on the `PATH` of the process running your agent. Launch
+  the agent from a shell where `codex-fugu --version` works (GUI-launched agents
+  may not inherit it).
 
 ## Install
 
@@ -108,17 +100,13 @@ effective briefing.
 
 ## Test
 
-A minimal-token smoke test (one trivial prompt) confirms codex-fugu works, runs
-on fugu-ultra, returns the expected output, and reports any MCP noise that leaked
-past the filter (informational only). It is cheap, not necessarily fast — Fugu
-Ultra orchestration can take a while:
+A minimal-token smoke test confirms `codex-fugu` works and runs on `fugu-ultra`.
+It's cheap, not necessarily fast (Fugu Ultra can take a while). Exits 0 on
+success, skips if `codex-fugu` isn't installed.
 
 ```bash
 scripts/smoke-test.sh
 ```
-
-It exits 0 on success, skips cleanly if `codex-fugu` is not installed, and fails
-loudly otherwise.
 
 ## Repository layout
 
