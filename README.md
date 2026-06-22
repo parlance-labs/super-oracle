@@ -9,9 +9,8 @@ debugging, architecture calls — when you want a stronger model.
 It ships as a **skill** (works in any agent with a shell) packaged as a **plugin**
 for Codex and Claude Code.
 
-> **Driven by your main agent, not by `codex-fugu`.** Invoke it *from* Codex,
-> Claude Code, or Amp — not from inside a `codex-fugu` session (that just asks
-> Fugu Ultra to consult itself).
+> Invoke it *from* Codex, Claude Code, or Amp — not from inside a `codex-fugu`
+> session.
 
 ## Prerequisites
 
