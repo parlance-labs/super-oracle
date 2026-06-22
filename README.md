@@ -63,19 +63,20 @@ plugins/super-oracle/skills/super-oracle/scripts/super-oracle.sh \
   -o oracle-out.md briefing.md
 ```
 
-The script always uses `fugu-ultra`, turns MCP off (see below), writes the
-answer to the `-o` file, and picks a safe permission posture. See the skill's
-`reference/briefing-template.md` for how to write an effective briefing.
+The script always uses `fugu-ultra`, leaves your MCP servers on (see below),
+writes the answer to the `-o` file, and picks a safe permission posture. See the
+skill's `reference/briefing-template.md` for how to write an effective briefing.
 
 ## Design notes (the foot-guns this encodes)
 
 - **Always Fugu Ultra.** `codex-fugu` defaults to plain `fugu`; the script forces
   `-c model=fugu-ultra`.
-- **MCP off by default.** `-c mcp_servers="{}"` does *not* disable MCP in `exec`
-  mode (codex deep-merges). The script runs with a temporary `CODEX_HOME` that
-  strips `[mcp_servers.*]` from `config.toml`, eliminating `Auth required` churn
-  while keeping the Sakana provider, profile, auth, and catalog. Use `-k` to keep
-  MCP on.
+- **MCP left on by default.** Unauthenticated MCP servers print harmless
+  `Auth required` warnings at shutdown but don't block — measured overhead is ~2s,
+  immaterial for a long-running oracle — so the script leaves your MCP servers on
+  and just filters the cosmetic noise. Pass `-n` to turn MCP off if a server
+  genuinely hangs. (`-c mcp_servers="{}"` does *not* disable MCP in `exec` mode
+  because codex deep-merges; `-n` strips `[mcp_servers.*]` via a temp `CODEX_HOME`.)
 - **Permission posture is approximated, not inherited.** Codex does not expose
   the parent agent's approval/sandbox policy to child processes (only
   `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED`). The script uses
@@ -83,13 +84,18 @@ answer to the `-o` file, and picks a safe permission posture. See the skill's
   (`--sandbox workspace-write`) when it detects it is already inside a Codex
   sandbox; else defaults to `--dangerously-bypass-approvals-and-sandbox`.
   Override with `SUPER_ORACLE_BYPASS=0|1`.
+- **Success = output produced, not exit code.** A broken/expired MCP server can
+  make `codex-fugu` exit non-zero even when the answer is fine. The script judges
+  success by whether the `-o` file is non-empty, so a bad MCP never breaks a good
+  run.
 - **Fugu Ultra is slow** (deep orchestration). Expect minutes; do not wrap in
   `timeout`.
 
 ## Test
 
 A fast, cheap smoke test (one trivial prompt) confirms codex-fugu works, runs on
-fugu-ultra, returns output, and emits no MCP auth churn:
+fugu-ultra, returns the expected output, and reports any MCP noise that leaked
+past the filter (informational only):
 
 ```bash
 scripts/smoke-test.sh

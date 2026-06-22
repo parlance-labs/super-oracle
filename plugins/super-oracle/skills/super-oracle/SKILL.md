@@ -21,8 +21,8 @@ Do not use it for file reads, searches, or routine edits — do those directly.
 scripts/super-oracle.sh -o /abs/path/oracle-out.md /abs/path/briefing.md
 ```
 
-Then read the output file and act on it. The script forces Fugu Ultra, turns MCP
-off, and picks a safe permission posture automatically (see below).
+Then read the output file and act on it. The script forces Fugu Ultra, leaves
+your MCP servers on, and picks a safe permission posture automatically (see below).
 
 ## Write a good briefing (this determines quality)
 
@@ -37,11 +37,16 @@ spawn its own subagents to parallelize. See `reference/briefing-template.md`.
 
 - **Always Fugu Ultra.** `codex-fugu` defaults to plain `fugu` on a stock
   install. The script forces `-c model=fugu-ultra`; do not drop it.
-- **MCP is off by default.** `-c mcp_servers="{}"` does NOT disable MCP in
-  `exec` mode (codex deep-merges). The script instead runs with a temp
-  `CODEX_HOME` that strips `[mcp_servers.*]` from `config.toml`, killing the
-  `Auth required` churn while keeping the Sakana provider, profile, auth, and
-  catalog. Pass `-k` only if a run truly needs an MCP server.
+- **MCP is left on by default.** Unauthenticated MCP servers print harmless
+  `Auth required` warnings at shutdown but do not block; measured overhead is a
+  couple of seconds, immaterial for a long-running oracle. The script filters
+  that cosmetic noise. Pass `-n` to turn MCP off only if a server genuinely
+  hangs. Note: `-c mcp_servers="{}"` does NOT disable MCP in `exec` mode (codex
+  deep-merges); `-n` strips `[mcp_servers.*]` via a temp `CODEX_HOME` instead.
+- **Success = output produced, not exit code.** A broken/expired MCP server can
+  make `codex-fugu` exit non-zero even when the oracle answered fine. The script
+  judges success by whether the `-o` file is non-empty, so a bad MCP never breaks
+  a good run; read the output file, don't gate on the exit code.
 - **Fugu Ultra is slow.** Deep orchestration takes minutes. Do not wrap in
   `timeout` (absent on macOS); let it finish.
 - **Fresh context every call.** Re-supply everything; there is no cross-call

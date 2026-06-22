@@ -12,14 +12,17 @@
 #   -o OUTPUT   Where to write the oracle's answer (required).
 #   -m MODEL    Model (default: fugu-ultra — always the strongest Fugu model).
 #   -C DIR      Working directory for the oracle (default: current dir).
-#   -k          Keep MCP servers on (default: OFF — see "MCP" below).
+#   -n          Turn MCP servers OFF for this run (default: leave them ON).
 #   -h          Help.
 #
-# MCP is OFF by default. codex-fugu starts every MCP server in ~/.codex/config.toml,
-# and remote OAuth servers throw noisy `Auth required` warnings and can stall runs.
-# `-c mcp_servers="{}"` does NOT disable them in exec mode (codex deep-merges).
-# The reliable fix used here: run with a temp CODEX_HOME mirroring the real one but
-# with all [mcp_servers.*] sections stripped from config.toml.
+# MCP is left ON by default. codex-fugu starts the MCP servers in
+# ~/.codex/config.toml; servers that are not logged in print harmless
+# `Auth required` warnings at shutdown but do not block (measured overhead is a
+# couple of seconds, immaterial for a long-running oracle). We just filter that
+# cosmetic noise from the output. Use -n only if you have an MCP server that
+# genuinely hangs or stalls a run; -n runs with a temp CODEX_HOME that strips all
+# [mcp_servers.*] from config.toml (note: `-c mcp_servers="{}"` does NOT work in
+# exec mode because codex deep-merges config).
 #
 # Permission posture (read this — true inheritance is impossible):
 #   codex does NOT expose the parent agent's approval/sandbox policy to child
@@ -32,13 +35,13 @@
 #   Set SUPER_ORACLE_BYPASS=0 to never bypass; =1 to force bypass.
 set -euo pipefail
 
-MODEL="fugu-ultra"; OUTPUT=""; WORKDIR=""; KEEP_MCP=0
+MODEL="fugu-ultra"; OUTPUT=""; WORKDIR=""; DISABLE_MCP=0
 usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
-while getopts ":o:m:C:kh" opt; do
+while getopts ":o:m:C:nh" opt; do
   case "$opt" in
     o) OUTPUT="$OPTARG" ;; m) MODEL="$OPTARG" ;; C) WORKDIR="$OPTARG" ;;
-    k) KEEP_MCP=1 ;; h) usage 0 ;;
+    n) DISABLE_MCP=1 ;; h) usage 0 ;;
     \?) echo "Unknown option: -$OPTARG" >&2; usage 1 ;;
     :) echo "Option -$OPTARG requires an argument" >&2; usage 1 ;;
   esac
@@ -69,11 +72,11 @@ else
   POSTURE_ARGS=(--dangerously-bypass-approvals-and-sandbox)   # unattended default
 fi
 
-# --- Turn MCP off via a temp CODEX_HOME (unless -k) ------------------------
+# --- Optionally turn MCP off via a temp CODEX_HOME (only with -n) ----------
 REAL_HOME="${CODEX_HOME:-$HOME/.codex}"; TMPHOME=""
-cleanup() { [ -n "$TMPHOME" ] && rm -rf "$TMPHOME"; }
+cleanup() { [ -n "$TMPHOME" ] && rm -rf "$TMPHOME"; return 0; }
 trap cleanup EXIT
-if [ "$KEEP_MCP" -eq 0 ] && [ -f "$REAL_HOME/config.toml" ]; then
+if [ "$DISABLE_MCP" -eq 1 ] && [ -f "$REAL_HOME/config.toml" ]; then
   TMPHOME="$(mktemp -d "${TMPDIR:-/tmp}/fugu-home.XXXXXX")"
   shopt -s dotglob nullglob 2>/dev/null || true
   for f in "$REAL_HOME"/*; do
@@ -102,13 +105,28 @@ run() {
 }
 
 [ -n "$WORKDIR" ] && cd "$WORKDIR"
-[ "$KEEP_MCP" -eq 0 ] && MCP_STATE="off" || MCP_STATE="on"
+[ "$DISABLE_MCP" -eq 1 ] && MCP_STATE="off" || MCP_STATE="on"
 echo ">> super-oracle: model=$MODEL mcp=$MCP_STATE posture=${POSTURE_ARGS[*]} cwd=$(pwd)" >&2
 
-FILTER='rmcp_client\|MCP client during shutdown\|Auth required\|OAuth authorization required'
+# Filter the harmless MCP auth/shutdown noise from displayed stderr. This hides
+# only those specific cosmetic lines; real errors still surface.
+FILTER='rmcp\|MCP client during shutdown\|Auth required\|OAuth authorization required\|Token refresh not possible\|worker quit with fatal'
+
+# A misconfigured/expired MCP server can make codex-fugu exit non-zero even
+# though the oracle answered fine. Judge success by whether output was produced,
+# not by codex's exit code (so a broken MCP never breaks a good run).
+set +e
 if [ -n "$BRIEFING_SRC" ]; then
   run < "$BRIEFING_SRC" 2> >(grep -v "$FILTER" >&2)
 else
   run 2> >(grep -v "$FILTER" >&2)
 fi
+rc=$?
+set -e
+
+if [ ! -s "$OUTPUT" ]; then
+  echo "ERROR: oracle produced no output (codex-fugu exit $rc)" >&2
+  exit 1
+fi
+[ "$rc" -ne 0 ] && echo ">> super-oracle: note: codex-fugu exited $rc (likely an MCP server issue); answer was still produced" >&2
 echo ">> super-oracle: done. Wrote $OUTPUT" >&2
