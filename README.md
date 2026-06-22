@@ -13,13 +13,25 @@ Sakana recommends running Fugu through an OpenAI-style harness; `codex-fugu`
 (OpenAI Codex CLI wired to the Sakana API) is that harness, which is why this
 oracle is built on it.
 
+> **Driven by your main agent, not by `codex-fugu`.** This oracle is meant to be
+> invoked *from* Codex, Claude Code, or Amp — they shell out to `codex-fugu` to
+> get a second opinion from a stronger model. Do **not** run it from inside a
+> `codex-fugu` session; that would just ask Fugu Ultra to consult itself.
+
 ## Prerequisites
 
-- [`codex-fugu`](https://sakana.ai/fugu) installed and authenticated:
+- [`codex-fugu`](https://console.sakana.ai/get-started) installed and
+  authenticated. From Sakana's
+  [Get Started docs](https://console.sakana.ai/get-started):
   ```bash
   curl -fsSL https://sakana.ai/fugu/install | bash
   ```
-  This sets up the Sakana provider and your `SAKANA_API_KEY` for the Codex CLI.
+  This pins the Codex CLI, sets up the Sakana provider, and stores your
+  `SAKANA_API_KEY`. For non-interactive installs:
+  `curl -fsSL https://sakana.ai/fugu/install | SAKANA_API_KEY=… bash -s -- --yes`.
+- `codex-fugu` must be on the `PATH` of the process running your agent. Shell
+  installers update interactive shell startup files, so GUI-launched agents may
+  not see it — launch the agent from a shell where `codex-fugu --version` works.
 
 ## Install
 
@@ -27,8 +39,7 @@ oracle is built on it.
 
 ```bash
 codex plugin marketplace add parlance-labs/super-oracle
-# then open the plugin directory and install "Super Oracle"
-codex /plugins
+codex plugin add super-oracle@parlance-labs
 ```
 
 ### Claude Code
@@ -64,8 +75,9 @@ plugins/super-oracle/skills/super-oracle/scripts/super-oracle.sh \
 ```
 
 The script always uses `fugu-ultra`, leaves your MCP servers on (see below),
-writes the answer to the `-o` file, and picks a safe permission posture. See the
-skill's `reference/briefing-template.md` for how to write an effective briefing.
+writes the answer to the `-o` file, and picks an unattended permission posture
+(see below). See the skill's `reference/briefing-template.md` for how to write an
+effective briefing.
 
 ## Design notes (the foot-guns this encodes)
 
@@ -80,10 +92,11 @@ skill's `reference/briefing-template.md` for how to write an effective briefing.
 - **Permission posture is approximated, not inherited.** Codex does not expose
   the parent agent's approval/sandbox policy to child processes (only
   `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED`). The script uses
-  `SUPER_ORACLE_SANDBOX` if set; else stays conservative
-  (`--sandbox workspace-write`) when it detects it is already inside a Codex
-  sandbox; else defaults to `--dangerously-bypass-approvals-and-sandbox`.
-  Override with `SUPER_ORACLE_BYPASS=0|1`.
+  `SUPER_ORACLE_SANDBOX` if set; else reuses the parent's `CODEX_SANDBOX` value
+  when present (without escalating it); else defaults to
+  `--dangerously-bypass-approvals-and-sandbox`. Force with
+  `SUPER_ORACLE_BYPASS=0|1`. For review-only runs, set
+  `SUPER_ORACLE_SANDBOX=read-only`.
 - **Success = output produced, not exit code.** A broken/expired MCP server can
   make `codex-fugu` exit non-zero even when the answer is fine. The script judges
   success by whether the `-o` file is non-empty, so a bad MCP never breaks a good
@@ -93,9 +106,10 @@ skill's `reference/briefing-template.md` for how to write an effective briefing.
 
 ## Test
 
-A fast, cheap smoke test (one trivial prompt) confirms codex-fugu works, runs on
-fugu-ultra, returns the expected output, and reports any MCP noise that leaked
-past the filter (informational only):
+A minimal-token smoke test (one trivial prompt) confirms codex-fugu works, runs
+on fugu-ultra, returns the expected output, and reports any MCP noise that leaked
+past the filter (informational only). It is cheap, not necessarily fast — Fugu
+Ultra orchestration can take a while:
 
 ```bash
 scripts/smoke-test.sh
@@ -119,6 +133,12 @@ super-oracle/
 │       └── scripts/super-oracle.sh
 └── scripts/smoke-test.sh
 ```
+
+## Releasing
+
+Marketplace installs key updates off the plugin `version`. Bump `version` in both
+`plugins/super-oracle/.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`
+on every published change (and tag the release) so installed copies update.
 
 ## License
 

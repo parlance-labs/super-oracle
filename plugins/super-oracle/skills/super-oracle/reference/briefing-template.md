@@ -1,8 +1,8 @@
 # Super Oracle Briefing Template
 
-Fill every section, delete the parenthetical guidance, then run:
-`scripts/super-oracle.sh -o OUTPUT.md BRIEFING.md`. The oracle has no prior
-context, so be complete and specific.
+Fill every section, delete the parenthetical guidance, then run the script next
+to this skill: `bash <this-skill-dir>/scripts/super-oracle.sh -o OUTPUT.md
+BRIEFING.md`. The oracle has no prior context, so be complete and specific.
 
 ---
 

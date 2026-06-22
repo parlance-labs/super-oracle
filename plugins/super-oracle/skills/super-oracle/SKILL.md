@@ -17,12 +17,16 @@ Do not use it for file reads, searches, or routine edits — do those directly.
 
 ## Invoke
 
+Run the script that ships next to this `SKILL.md` (use its absolute path — the
+agent's cwd is the user's repo, not the skill dir):
+
 ```bash
-scripts/super-oracle.sh -o /abs/path/oracle-out.md /abs/path/briefing.md
+bash <this-skill-dir>/scripts/super-oracle.sh -o /abs/path/oracle-out.md /abs/path/briefing.md
 ```
 
 Then read the output file and act on it. The script forces Fugu Ultra, leaves
-your MCP servers on, and picks a safe permission posture automatically (see below).
+your MCP servers on, and picks an unattended permission posture automatically
+(see below). For pure review/advice runs, prefer `SUPER_ORACLE_SANDBOX=read-only`.
 
 ## Write a good briefing (this determines quality)
 
@@ -52,11 +56,11 @@ spawn its own subagents to parallelize. See `reference/briefing-template.md`.
 - **Fresh context every call.** Re-supply everything; there is no cross-call
   memory.
 - **Permission posture is approximated, not inherited.** codex does not expose
-  the parent agent's approval/sandbox policy to child processes. The script:
-  uses `SUPER_ORACLE_SANDBOX` if set; else stays conservative
-  (`--sandbox workspace-write`) when it detects it is already inside a Codex
-  sandbox; else defaults to `--dangerously-bypass-approvals-and-sandbox` for
-  unattended use. Override with `SUPER_ORACLE_BYPASS=0|1`.
+  the parent agent's approval/sandbox policy to child processes. The script uses
+  `SUPER_ORACLE_SANDBOX` if set; else reuses the parent's `CODEX_SANDBOX` value
+  when present (without escalating it); else defaults to
+  `--dangerously-bypass-approvals-and-sandbox` for unattended use. Force with
+  `SUPER_ORACLE_BYPASS=0|1`. For review-only runs use `SUPER_ORACLE_SANDBOX=read-only`.
 
 ## Consume the output
 
