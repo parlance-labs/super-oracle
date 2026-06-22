@@ -3,6 +3,32 @@
 Rationale and foot-guns behind `scripts/super-oracle.sh`. Keep this out of the
 README (user-facing) — it's for maintainers.
 
+## Repository layout
+
+```
+super-oracle/
+├── .agents/plugins/marketplace.json      # Codex marketplace
+├── .claude-plugin/marketplace.json       # Claude Code marketplace
+├── plugins/super-oracle/
+│   ├── .codex-plugin/plugin.json         # Codex manifest
+│   ├── .claude-plugin/plugin.json        # Claude manifest
+│   └── skills/super-oracle/              # the portable skill (used by Amp too)
+│       ├── SKILL.md
+│       ├── reference/briefing-template.md
+│       └── scripts/super-oracle.sh
+└── scripts/smoke-test.sh
+```
+
+## Test
+
+A minimal-token smoke test confirms `codex-fugu` works and runs on `fugu-ultra`.
+Cheap, not necessarily fast. Exits 0 on success, skips if `codex-fugu` isn't
+installed.
+
+```bash
+scripts/smoke-test.sh
+```
+
 ## Always Fugu Ultra
 `codex-fugu` defaults to plain `fugu`. The script forces `-c model=fugu-ultra`
 and intentionally exposes no model flag.
