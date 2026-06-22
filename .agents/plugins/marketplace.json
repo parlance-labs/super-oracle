@@ -1,0 +1,20 @@
+{
+  "name": "parlance-labs",
+  "interface": {
+    "displayName": "Parlance Labs"
+  },
+  "plugins": [
+    {
+      "name": "super-oracle",
+      "source": {
+        "source": "local",
+        "path": "./plugins/super-oracle"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

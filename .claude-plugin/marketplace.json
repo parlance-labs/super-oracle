@@ -1,0 +1,17 @@
+{
+  "name": "parlance-labs",
+  "owner": {
+    "name": "Parlance Labs",
+    "url": "https://github.com/parlance-labs"
+  },
+  "description": "Parlance Labs plugins for coding agents.",
+  "plugins": [
+    {
+      "name": "super-oracle",
+      "source": "./plugins/super-oracle",
+      "description": "Consult Sakana Fugu Ultra via codex-fugu as a second-opinion oracle.",
+      "category": "productivity",
+      "keywords": ["oracle", "codex-fugu", "fugu-ultra", "code-review", "second-opinion"]
+    }
+  ]
+}

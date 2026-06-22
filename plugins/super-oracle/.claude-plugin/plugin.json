@@ -1,0 +1,15 @@
+{
+  "name": "super-oracle",
+  "displayName": "Super Oracle",
+  "version": "0.1.0",
+  "description": "Consult Sakana Fugu Ultra via codex-fugu as a second-opinion oracle for deep review, debugging, planning, and research.",
+  "author": {
+    "name": "Parlance Labs",
+    "url": "https://github.com/parlance-labs"
+  },
+  "homepage": "https://github.com/parlance-labs/super-oracle",
+  "repository": "https://github.com/parlance-labs/super-oracle",
+  "license": "MIT",
+  "keywords": ["oracle", "codex-fugu", "fugu-ultra", "code-review", "second-opinion"],
+  "skills": "./skills/"
+}
