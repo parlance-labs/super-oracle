@@ -66,36 +66,21 @@ plugins/super-oracle/skills/super-oracle/scripts/super-oracle.sh \
   -o oracle-out.md briefing.md
 ```
 
-The script always uses `fugu-ultra`, leaves your MCP servers on (see below),
-writes the answer to the `-o` file, and picks an unattended permission posture
-(see below). See the skill's `reference/briefing-template.md` for how to write an
-effective briefing.
+It writes the answer to the `-o` file. See the skill's
+`reference/briefing-template.md` for how to write an effective briefing, and
+[Options](#options) for flags.
 
-## Design notes (the foot-guns this encodes)
+## Options
 
-- **Always Fugu Ultra.** `codex-fugu` defaults to plain `fugu`; the script forces
-  `-c model=fugu-ultra`.
-- **MCP left on by default.** Unauthenticated MCP servers print harmless
-  `Auth required` warnings at shutdown but don't block — measured overhead is ~2s,
-  immaterial for a long-running oracle — so the script leaves your MCP servers on
-  and just filters the cosmetic noise. Pass `-n` to turn MCP off if a server
-  genuinely hangs. (`-c mcp_servers="{}"` does *not* disable MCP in `exec` mode
-  because codex deep-merges; `-n` strips `[mcp_servers.*]` via a temp `CODEX_HOME`.)
-- **Permission posture is approximated, not inherited.** Codex does not expose
-  the parent agent's approval/sandbox policy to child processes (only
-  `CODEX_SANDBOX` / `CODEX_SANDBOX_NETWORK_DISABLED`). The script uses
-  `SUPER_ORACLE_SANDBOX` if set; else stays conservative
-  (`--sandbox workspace-write`) when it detects a Codex sandbox signal
-  (`CODEX_SANDBOX` is a backend marker like `seatbelt`, not a policy value); else
-  defaults to `--dangerously-bypass-approvals-and-sandbox`. Force with
-  `SUPER_ORACLE_BYPASS=0|1`. For review-only runs, set
-  `SUPER_ORACLE_SANDBOX=read-only`.
-- **Success = output produced, not exit code.** A broken/expired MCP server can
-  make `codex-fugu` exit non-zero even when the answer is fine. The script judges
-  success by whether the `-o` file is non-empty, so a bad MCP never breaks a good
-  run.
-- **Fugu Ultra is slow** (deep orchestration). Expect minutes; do not wrap in
-  `timeout`.
+| Flag / env | Effect |
+|---|---|
+| `-o FILE` | Where the answer is written (required). |
+| `-n` | Turn MCP servers off for this run (default: on). |
+| `-C DIR` | Working directory for the oracle. |
+| `SUPER_ORACLE_SANDBOX=read-only` | Recommended for review-only runs. |
+| `SUPER_ORACLE_BYPASS=0\|1` | Force `workspace-write` / full bypass. |
+
+Always runs `fugu-ultra`. Expect minutes per call — don't wrap it in `timeout`.
 
 ## Test
 
@@ -122,12 +107,6 @@ super-oracle/
 │       └── scripts/super-oracle.sh
 └── scripts/smoke-test.sh
 ```
-
-## Releasing
-
-Marketplace installs key updates off the plugin `version`. Bump `version` in both
-`plugins/super-oracle/.codex-plugin/plugin.json` and `.claude-plugin/plugin.json`
-on every published change (and tag the release) so installed copies update.
 
 ## License
 
