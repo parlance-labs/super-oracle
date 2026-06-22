@@ -55,8 +55,6 @@ done
 shift $((OPTIND - 1))
 
 [ -z "$OUTPUT" ] && { echo "ERROR: -o OUTPUT is required" >&2; usage 1; }
-command -v codex-fugu >/dev/null 2>&1 || {
-  echo "ERROR: codex-fugu not found. Install: https://console.sakana.ai/get-started" >&2; exit 127; }
 
 # Normalize output to an absolute path now, before any cd, so -C and relative
 # paths behave predictably (output lands relative to the caller's cwd).
@@ -76,9 +74,13 @@ if [ "$#" -ge 1 ] && [ "$1" != "-" ]; then
   fi
 fi
 
-# Clear any stale output now, before the failure-prone setup below (-n rewrite,
-# cd, run), so a failed invocation can never be mistaken for a prior success.
+# Clear any stale output now, before the failure-prone setup below (missing
+# dependency, -n rewrite, cd, run), so a failed invocation can never be mistaken
+# for a prior success by an output-based caller.
 : > "$OUTPUT" || { echo "ERROR: cannot write output: $OUTPUT" >&2; exit 1; }
+
+command -v codex-fugu >/dev/null 2>&1 || {
+  echo "ERROR: codex-fugu not found. Install: https://console.sakana.ai/get-started" >&2; exit 127; }
 
 # --- Resolve permission posture (see header) -------------------------------
 valid_sandbox() {
