@@ -16,6 +16,8 @@ for Codex and Claude Code.
   ```bash
   curl -fsSL https://sakana.ai/fugu/install | bash
   ```
+  When you create your Sakana API key, enable **"Fugu custom model pool"** so
+  Fugu Ultra can route across the full pool of frontier models.
 - `codex-fugu` must be on the `PATH` of the process running your agent. Launch
   the agent from a shell where `codex-fugu --version` works (GUI-launched agents
   may not inherit it).
