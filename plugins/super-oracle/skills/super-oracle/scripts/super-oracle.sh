@@ -219,16 +219,27 @@ else
   { emit_contract; cat; } | run 2> >(grep -Ev "$FILTER" >&2)
 fi
 rc=$?
-set -e
+# Deliberately stay with `set +e` for the rest of the script. The tail does its
+# own explicit error handling (it exits 1 only on genuinely empty output), so
+# re-enabling `set -e` here would add no safety and risks a spurious non-zero
+# exit from a benign `[ test ] && echo` short-circuit on a successful run.
 
-# Recover an oversized/file-only answer so a run is never silently wasted.
+# Recover an oversized/file-only answer so a run is never silently wasted. Under
+# set +e the write must be checked explicitly, or a failed/partial write could
+# slip past the empty-output check below and exit 0 with a corrupt answer.
 if [ ! -s "$OUTPUT" ] && [ -s "$ARTIFACTS_DIR/answer.md" ]; then
-  cat "$ARTIFACTS_DIR/answer.md" > "$OUTPUT"
+  if ! cat "$ARTIFACTS_DIR/answer.md" > "$OUTPUT"; then
+    echo "ERROR: cannot recover answer from $ARTIFACTS_DIR/answer.md into $OUTPUT" >&2; exit 1
+  fi
   echo ">> super-oracle: recovered answer from $ARTIFACTS_DIR/answer.md" >&2
 fi
 
-# List artifacts the oracle actually wrote (ignore our ownership marker).
-ARTIFACT_FILES="$(find "$ARTIFACTS_DIR" -type f ! -name "$OWN_MARKER" 2>/dev/null)"
+# List artifacts the oracle actually wrote (ignore our ownership marker). A find
+# failure must abort, not be misread as "no artifacts" (which would silently drop
+# the manifest and delete the dir).
+if ! ARTIFACT_FILES="$(find "$ARTIFACTS_DIR" -type f ! -name "$OWN_MARKER")"; then
+  echo "ERROR: cannot list artifacts dir: $ARTIFACTS_DIR" >&2; exit 1
+fi
 if [ -z "$ARTIFACT_FILES" ]; then
   rm -rf "$ARTIFACTS_DIR" 2>/dev/null || true   # only the marker; don't litter
 fi
@@ -239,10 +250,13 @@ if [ ! -s "$OUTPUT" ]; then
   exit 1
 fi
 
-# Tell the caller what files exist so they read (and don't delete) them.
+# Tell the caller what files exist so they read (and don't delete) them. If we
+# can't record that artifacts exist, fail loudly rather than hide them.
 if [ -n "$ARTIFACT_FILES" ]; then
-  { echo; echo "---"; echo "## Artifacts (read these; do not delete before reading)";
-    printf '%s\n' "$ARTIFACT_FILES" | sed 's/^/- /'; } >> "$OUTPUT"
+  if ! { echo; echo "---"; echo "## Artifacts (read these; do not delete before reading)";
+    printf '%s\n' "$ARTIFACT_FILES" | sed 's/^/- /'; } >> "$OUTPUT"; then
+    echo "ERROR: cannot append artifact manifest to $OUTPUT (artifacts are in $ARTIFACTS_DIR)" >&2; exit 1
+  fi
 fi
 
 [ "$rc" -ne 0 ] && echo ">> super-oracle: note: codex-fugu exited $rc (likely an MCP server issue); answer was still produced" >&2
