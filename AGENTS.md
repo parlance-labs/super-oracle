@@ -61,6 +61,14 @@ answer is fine. The script judges success by whether the `-o` file is non-empty.
 The `-o` file is truncated before any failure-prone step (missing dependency,
 `-n` rewrite, `cd`, run) so a stale file can never look like success.
 
+The post-run tail intentionally runs under `set +e` and ends with an explicit
+`exit 0`. Reason (found by dogfooding): with `set -e`, a benign `[ test ] && echo`
+short-circuit can make a *successful* run exit non-zero, so callers that chain on
+the exit code break. Because the tail has no `set -e`, every operation that must
+not fail silently (recovering `answer.md` into `-o`, enumerating artifacts,
+appending the manifest) is guarded with an explicit `if ! ...; then ... exit 1`.
+Keep that pattern when editing the tail; do not re-add `set -e` there.
+
 ## Two-channel output (control plane vs data plane)
 `codex-fugu`'s `-o` captures ONLY the final assistant message. A long answer the
 oracle writes to a file would otherwise be lost (and an earlier review run was
