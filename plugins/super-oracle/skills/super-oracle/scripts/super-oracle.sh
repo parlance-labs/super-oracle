@@ -39,10 +39,17 @@
 #       conservative with --sandbox workspace-write rather than escalating.
 #     - Else default to --dangerously-bypass-approvals-and-sandbox (unattended).
 #   For pure review/advice runs, prefer SUPER_ORACLE_SANDBOX=read-only.
+#
+# Output: -o captures ONLY codex-fugu's final assistant message. The script
+#   prepends an output contract so the oracle puts its full answer in that final
+#   message, and writes any supporting files only under SUPER_ORACLE_ARTIFACTS_DIR
+#   (default: OUTPUT.artifacts, cleared each run). If -o ends up empty but
+#   $ARTIFACTS_DIR/answer.md exists it is recovered into -o, and a manifest of any
+#   artifacts is appended to -o. Success = non-empty -o, not codex-fugu's exit code.
 set -euo pipefail
 
 MODEL="fugu-ultra"; OUTPUT=""; WORKDIR=""; DISABLE_MCP=0
-usage() { sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+usage() { sed -n '2,48p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
 
 while getopts ":o:C:nh" opt; do
   case "$opt" in
@@ -63,6 +70,14 @@ case "$OUTPUT" in /*) ;; *) OUTPUT="$ORIGPWD/$OUTPUT" ;; esac
 OUTDIR="$(dirname "$OUTPUT")"
 [ -d "$OUTDIR" ] || { echo "ERROR: output directory not found: $OUTDIR" >&2; exit 1; }
 
+# Normalize -C too (absolute), so the artifacts-dir safety check below can
+# reliably refuse it even when the caller passed a relative path.
+if [ -n "$WORKDIR" ]; then
+  case "$WORKDIR" in /*) ;; *) WORKDIR="$ORIGPWD/$WORKDIR" ;; esac
+  WORKDIR="${WORKDIR%/}"
+  [ -d "$WORKDIR" ] || { echo "ERROR: -C directory not found: $WORKDIR" >&2; exit 1; }
+fi
+
 [ "$#" -le 1 ] || { echo "ERROR: expected at most one briefing file" >&2; usage 1; }
 BRIEFING_SRC=""
 if [ "$#" -ge 1 ] && [ "$1" != "-" ]; then
@@ -81,6 +96,32 @@ fi
 
 command -v codex-fugu >/dev/null 2>&1 || {
   echo "ERROR: codex-fugu not found. Install: https://console.sakana.ai/get-started" >&2; exit 127; }
+
+# --- Artifacts directory (the oracle's sanctioned place to write files) -----
+# codex-fugu's -o captures only the final assistant message. If the oracle wants
+# to emit files (patches, mockups, a long answer), they go here. The default sits
+# next to -o; override with SUPER_ORACLE_ARTIFACTS_DIR. This dir is owned by the
+# run: it is cleared and recreated each time, and removed at the end if empty.
+# Because we rm -rf it, we NEVER clobber a path we don't own: we refuse obviously
+# dangerous targets and refuse any existing dir that lacks our ownership marker,
+# so a stray SUPER_ORACLE_ARTIFACTS_DIR can't delete a user's data.
+ARTIFACTS_DIR="${SUPER_ORACLE_ARTIFACTS_DIR:-$OUTPUT.artifacts}"
+case "$ARTIFACTS_DIR" in /*) ;; *) ARTIFACTS_DIR="$ORIGPWD/$ARTIFACTS_DIR" ;; esac
+ARTIFACTS_DIR="${ARTIFACTS_DIR%/}"
+OWN_MARKER=".super-oracle-owned"
+case "$ARTIFACTS_DIR" in
+  "" | "/" | "$HOME" | "$ORIGPWD" | "$WORKDIR" | "$OUTPUT")
+    echo "ERROR: refusing to use artifacts dir '$ARTIFACTS_DIR' (unsafe: would delete a path the oracle doesn't own). Set SUPER_ORACLE_ARTIFACTS_DIR to a dedicated path." >&2; exit 1 ;;
+esac
+if [ -e "$ARTIFACTS_DIR" ] && [ ! -e "$ARTIFACTS_DIR/$OWN_MARKER" ]; then
+  echo "ERROR: artifacts dir '$ARTIFACTS_DIR' already exists and isn't owned by super-oracle; refusing to delete it. Point SUPER_ORACLE_ARTIFACTS_DIR at a fresh path." >&2; exit 1
+fi
+# Hard-fail the clear: if a stale owned dir can't be removed, a leftover
+# answer.md could later be recovered into -o as if it came from this run.
+rm -rf "$ARTIFACTS_DIR" || { echo "ERROR: cannot clear artifacts dir: $ARTIFACTS_DIR" >&2; exit 1; }
+mkdir -p "$ARTIFACTS_DIR" || { echo "ERROR: cannot create artifacts dir: $ARTIFACTS_DIR" >&2; exit 1; }
+: > "$ARTIFACTS_DIR/$OWN_MARKER"
+export SUPER_ORACLE_ARTIFACTS_DIR="$ARTIFACTS_DIR"
 
 # --- Resolve permission posture (see header) -------------------------------
 valid_sandbox() {
@@ -142,29 +183,69 @@ run() {
     -c model="$MODEL" -o "$OUTPUT" -
 }
 
+# Output contract prepended to every briefing, so correctness never depends on
+# the briefing author remembering how -o works.
+emit_contract() {
+  cat <<EOF
+# Output contract (injected by super-oracle.sh — follow exactly)
+Your caller saves ONLY your final assistant message. Put your full answer there.
+Do NOT write the answer to a file and reply with just a pointer.
+You MAY create supporting files (patches, mockups, long appendices), but ONLY in:
+  $ARTIFACTS_DIR
+If the answer is too large for one message, write it to $ARTIFACTS_DIR/answer.md
+AND still put the verdict, key findings, and an "Artifacts" list (absolute paths)
+in your final message.
+
+--- briefing follows ---
+
+EOF
+}
+
 [ -n "$WORKDIR" ] && cd "$WORKDIR"
 [ "$DISABLE_MCP" -eq 1 ] && MCP_STATE="off" || MCP_STATE="on"
-echo ">> super-oracle: model=$MODEL mcp=$MCP_STATE posture=${POSTURE_ARGS[*]} cwd=$(pwd)" >&2
+echo ">> super-oracle: model=$MODEL mcp=$MCP_STATE posture=${POSTURE_ARGS[*]} cwd=$(pwd) artifacts=$ARTIFACTS_DIR" >&2
 
 # Filter the harmless MCP auth/shutdown noise from displayed stderr. Patterns are
 # kept narrow so real errors still surface.
-FILTER='(MCP client during shutdown|OAuth authorization required|Token refresh not possible|Auth required)'
+FILTER='(MCP client during shutdown|OAuth authorization required|Token refresh not possible|Auth required|rmcp::transport|codex_rollout::list: state db discrepancy)'
 
 # A misconfigured/expired MCP server can make codex-fugu exit non-zero even
 # though the oracle answered fine. Judge success by whether output was produced,
 # not by codex's exit code (so a broken MCP never breaks a good run).
 set +e
 if [ -n "$BRIEFING_SRC" ]; then
-  run < "$BRIEFING_SRC" 2> >(grep -Ev "$FILTER" >&2)
+  { emit_contract; cat "$BRIEFING_SRC"; } | run 2> >(grep -Ev "$FILTER" >&2)
 else
-  run 2> >(grep -Ev "$FILTER" >&2)
+  { emit_contract; cat; } | run 2> >(grep -Ev "$FILTER" >&2)
 fi
 rc=$?
 set -e
 
+# Recover an oversized/file-only answer so a run is never silently wasted.
+if [ ! -s "$OUTPUT" ] && [ -s "$ARTIFACTS_DIR/answer.md" ]; then
+  cat "$ARTIFACTS_DIR/answer.md" > "$OUTPUT"
+  echo ">> super-oracle: recovered answer from $ARTIFACTS_DIR/answer.md" >&2
+fi
+
+# List artifacts the oracle actually wrote (ignore our ownership marker).
+ARTIFACT_FILES="$(find "$ARTIFACTS_DIR" -type f ! -name "$OWN_MARKER" 2>/dev/null)"
+if [ -z "$ARTIFACT_FILES" ]; then
+  rm -rf "$ARTIFACTS_DIR" 2>/dev/null || true   # only the marker; don't litter
+fi
+
 if [ ! -s "$OUTPUT" ]; then
-  echo "ERROR: oracle produced no output (codex-fugu exit $rc; some MCP noise may have been filtered)" >&2
+  echo "ERROR: oracle produced no final message (codex-fugu exit $rc; some MCP noise may have been filtered)." >&2
+  [ -n "$ARTIFACT_FILES" ] && echo "ERROR: but it wrote files; inspect: $ARTIFACTS_DIR" >&2
   exit 1
 fi
+
+# Tell the caller what files exist so they read (and don't delete) them.
+if [ -n "$ARTIFACT_FILES" ]; then
+  { echo; echo "---"; echo "## Artifacts (read these; do not delete before reading)";
+    printf '%s\n' "$ARTIFACT_FILES" | sed 's/^/- /'; } >> "$OUTPUT"
+fi
+
 [ "$rc" -ne 0 ] && echo ">> super-oracle: note: codex-fugu exited $rc (likely an MCP server issue); answer was still produced" >&2
 echo ">> super-oracle: done. Wrote $OUTPUT" >&2
+[ -n "$ARTIFACT_FILES" ] && echo ">> super-oracle: artifacts in $ARTIFACTS_DIR" >&2
+exit 0   # never let a false test above become the script's exit status

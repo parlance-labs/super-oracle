@@ -31,10 +31,12 @@ OUT_STRIPPED="$(tr -d '[:space:]' < "$WORK/out.md" 2>/dev/null || true)"
 AUTH=$(grep -c 'Auth required\|OAuth authorization required\|rmcp_client' "$WORK/err.txt" || true)
 
 echo "   elapsed=${ELAPSED}s  output='${OUT}'  leaked_mcp_noise=${AUTH}"
-# Hard assertion: codex-fugu reached Fugu Ultra and returned exactly READY.
+# Assertion: codex-fugu reached Fugu Ultra and returned READY. Contains-match
+# (not exact) because the wrapper now prepends an output contract, so the model
+# may add an artifact note alongside the answer.
 case "$OUT_STRIPPED" in
-  READY) echo "PASS: super-oracle smoke test" ;;
-  *) echo "FAIL: expected exactly READY in output, got: '${OUT}'"; exit 1 ;;
+  *READY*) echo "PASS: super-oracle smoke test" ;;
+  *) echo "FAIL: expected READY in output, got: '${OUT}'"; exit 1 ;;
 esac
 # Informational only: the script should filter cosmetic MCP shutdown noise.
 [ "$AUTH" -eq 0 ] || echo "NOTE: ${AUTH} MCP shutdown lines leaked past the filter (cosmetic)"

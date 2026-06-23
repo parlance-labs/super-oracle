@@ -61,6 +61,22 @@ answer is fine. The script judges success by whether the `-o` file is non-empty.
 The `-o` file is truncated before any failure-prone step (missing dependency,
 `-n` rewrite, `cd`, run) so a stale file can never look like success.
 
+## Two-channel output (control plane vs data plane)
+`codex-fugu`'s `-o` captures ONLY the final assistant message. A long answer the
+oracle writes to a file would otherwise be lost (and an earlier review run was
+wasted when such a file got deleted as "stray output"). Fix:
+
+- **Control plane** = `-o`: the script prepends an output contract telling the
+  oracle to put its full answer in the final message.
+- **Data plane** = `SUPER_ORACLE_ARTIFACTS_DIR` (default `OUTPUT.artifacts`):
+  the only sanctioned place for supporting files. Cleared/recreated each run,
+  removed at the end if empty so it doesn't litter.
+
+Robustness: if `-o` is empty but `$ARTIFACTS_DIR/answer.md` exists it's recovered
+into `-o`; any artifacts are listed as a manifest appended to `-o` with a
+"do not delete before reading" note. Never treat oracle-emitted files as
+disposable.
+
 ## Releasing
 Marketplace installs key updates off the plugin `version`. Bump `version` in both
 `plugins/super-oracle/.codex-plugin/plugin.json` and

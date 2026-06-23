@@ -68,3 +68,12 @@ spawn its own subagents to parallelize. See `reference/briefing-template.md`.
 Read the answer, verify the load-bearing claims, apply must-fixes, weigh
 optionals, reject what is wrong. For an approval loop, fix then re-run a short
 confirmation briefing. Keep briefing/answer files (date-stamped) as an audit trail.
+
+**Artifacts.** The oracle may emit supporting files (patches, mockups, a long
+appendix) into an artifacts dir; the script appends a manifest of them to the
+answer. Read those files before acting and do not delete them until you have. The
+dir defaults to `OUTPUT.artifacts/` next to your `-o` file, so if `-o` is inside
+your repo the artifacts are too; put `-o` under `/tmp` or set
+`SUPER_ORACLE_ARTIFACTS_DIR` to keep them out of the repo. Inside your repo the
+script only writes `-o` and that dir (with `-n` it also makes a temp `CODEX_HOME`
+under `/tmp`, removed on exit).

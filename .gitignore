@@ -1,3 +1,4 @@
 *.md.out
 oracle-out*.md
+*.artifacts/
 .DS_Store
