@@ -14,6 +14,7 @@
 #   -o OUTPUT   Where to write the oracle's answer (required).
 #   -C DIR      Working directory for the oracle (default: current dir).
 #   -n          Turn MCP servers OFF for this run (default: leave them ON).
+#   -p SECONDS  Progress heartbeat interval on stderr (default 120; 0 = off).
 #   -h          Help.
 #
 # Always Fugu Ultra. The model is fixed to fugu-ultra (codex-fugu defaults to
@@ -46,20 +47,37 @@
 #   (default: OUTPUT.artifacts, cleared each run). If -o ends up empty but
 #   $ARTIFACTS_DIR/answer.md exists it is recovered into -o, and a manifest of any
 #   artifacts is appended to -o. Success = non-empty -o, not codex-fugu's exit code.
+#
+# Progress: Fugu Ultra runs for minutes, so the script prints a heartbeat to
+#   stderr every SUPER_ORACLE_PROGRESS_INTERVAL seconds (default 120; -p overrides;
+#   0 disables) with elapsed time and the latest oracle output line, so a long run
+#   feels alive. Heartbeats go to stderr only and never touch -o.
 set -euo pipefail
 
 MODEL="fugu-ultra"; OUTPUT=""; WORKDIR=""; DISABLE_MCP=0
-usage() { sed -n '2,48p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit "${1:-0}"; }
+PROGRESS_INTERVAL="${SUPER_ORACLE_PROGRESS_INTERVAL:-120}"
+HB_PID=""; PROGRESS_LOG=""   # set later; declared now so cleanup is safe under set -u
+# Print the leading comment block (everything from line 2 up to the first
+# non-comment line) as help. Scanning beats a hardcoded line range, which has
+# silently leaked code into -h whenever the header grew.
+usage() { awk 'NR>=2 && /^#/{sub(/^# ?/,""); print; next} NR>=2{exit}' "${BASH_SOURCE[0]}"; exit "${1:-0}"; }
 
-while getopts ":o:C:nh" opt; do
+while getopts ":o:C:p:nh" opt; do
   case "$opt" in
     o) OUTPUT="$OPTARG" ;; C) WORKDIR="$OPTARG" ;;
+    p) PROGRESS_INTERVAL="$OPTARG" ;;
     n) DISABLE_MCP=1 ;; h) usage 0 ;;
     \?) echo "Unknown option: -$OPTARG" >&2; usage 1 ;;
     :) echo "Option -$OPTARG requires an argument" >&2; usage 1 ;;
   esac
 done
 shift $((OPTIND - 1))
+
+case "$PROGRESS_INTERVAL" in
+  ''|*[!0-9]*) echo "ERROR: progress interval must be a non-negative integer (seconds)" >&2; exit 2 ;;
+esac
+# Bound the length so later `[ -gt ]` arithmetic can't overflow into an error.
+[ "${#PROGRESS_INTERVAL}" -le 9 ] || { echo "ERROR: progress interval too large" >&2; exit 2; }
 
 [ -z "$OUTPUT" ] && { echo "ERROR: -o OUTPUT is required" >&2; usage 1; }
 
@@ -148,9 +166,53 @@ else
   POSTURE_ARGS=(--dangerously-bypass-approvals-and-sandbox)   # unattended default
 fi
 
+# --- Progress heartbeat (keeps a long run feeling alive) -------------------
+# Prints to stderr only, so it never contaminates -o. Reports elapsed time, how
+# long since the oracle last emitted a line, and that latest line (truncated).
+heartbeat() {
+  local interval="$1" log="$2" start now el mm ss mtime idle line sleep_pid=""
+  # Run sleep as an explicit child and kill it on TERM. Otherwise killing this
+  # subshell would orphan an in-progress `sleep`, which keeps inherited stderr
+  # fds open and can make a stderr-draining caller hang for up to `interval`s.
+  trap '[ -n "${sleep_pid:-}" ] && kill "$sleep_pid" 2>/dev/null; exit 0' TERM INT
+  start=$(date +%s)
+  while :; do
+    sleep "$interval" & sleep_pid=$!
+    wait "$sleep_pid"; sleep_pid=""
+    now=$(date +%s); el=$((now - start)); mm=$((el / 60)); ss=$((el % 60))
+    idle=""; line=""
+    if [ -f "$log" ]; then
+      mtime=$(stat -f %m "$log" 2>/dev/null || stat -c %Y "$log" 2>/dev/null || echo "$now")
+      idle=" (last output $((now - mtime))s ago)"
+      line=$(tail -n 1 "$log" 2>/dev/null | tr -d '\r' | cut -c1-80)
+    fi
+    if [ -n "$line" ]; then
+      echo ">> super-oracle: still working — ${mm}m${ss}s elapsed${idle} | $line" >&2
+    else
+      echo ">> super-oracle: still working — ${mm}m${ss}s elapsed${idle}" >&2
+    fi
+  done
+}
+start_heartbeat() {
+  [ "$PROGRESS_INTERVAL" -gt 0 ] || return 0
+  heartbeat "$PROGRESS_INTERVAL" "$PROGRESS_LOG" &
+  HB_PID=$!
+}
+stop_heartbeat() {
+  [ -n "${HB_PID:-}" ] || return 0
+  kill "$HB_PID" 2>/dev/null
+  wait "$HB_PID" 2>/dev/null
+  HB_PID=""
+}
+
 # --- Optionally turn MCP off via a temp CODEX_HOME (only with -n) ----------
 REAL_HOME="${CODEX_HOME:-$HOME/.codex}"; TMPHOME=""
-cleanup() { [ -n "$TMPHOME" ] && rm -rf "$TMPHOME"; return 0; }
+cleanup() {
+  stop_heartbeat
+  [ -n "${TMPHOME:-}" ] && rm -rf "$TMPHOME"
+  [ -n "${PROGRESS_LOG:-}" ] && [ "$PROGRESS_LOG" != /dev/null ] && rm -f "$PROGRESS_LOG"
+  return 0
+}
 trap cleanup EXIT
 if [ "$DISABLE_MCP" -eq 1 ] && [ -f "$REAL_HOME/config.toml" ]; then
   command -v python3 >/dev/null 2>&1 || {
@@ -203,22 +265,34 @@ EOF
 
 [ -n "$WORKDIR" ] && cd "$WORKDIR"
 [ "$DISABLE_MCP" -eq 1 ] && MCP_STATE="off" || MCP_STATE="on"
-echo ">> super-oracle: model=$MODEL mcp=$MCP_STATE posture=${POSTURE_ARGS[*]} cwd=$(pwd) artifacts=$ARTIFACTS_DIR" >&2
+[ "$PROGRESS_INTERVAL" -gt 0 ] && PROGRESS_STATE="${PROGRESS_INTERVAL}s" || PROGRESS_STATE="off"
+echo ">> super-oracle: model=$MODEL mcp=$MCP_STATE posture=${POSTURE_ARGS[*]} progress=$PROGRESS_STATE cwd=$(pwd) artifacts=$ARTIFACTS_DIR" >&2
 
 # Filter the harmless MCP auth/shutdown noise from displayed stderr. Patterns are
-# kept narrow so real errors still surface.
+# kept narrow so real errors still surface. --line-buffered is essential: without
+# it grep block-buffers when its stdout is a pipe, so the oracle's reasoning would
+# appear in one clump at the very end and the heartbeat could never read the
+# latest line. (Supported by both BSD/macOS and GNU grep.)
 FILTER='(MCP client during shutdown|OAuth authorization required|Token refresh not possible|Auth required|rmcp::transport|codex_rollout::list: state db discrepancy)'
+GREP_LB=(grep --line-buffered -Ev "$FILTER")
+
+# Mirror the filtered stderr to a log the heartbeat reads for "latest line" and
+# idle time. Created here so it exists before the run; removed by cleanup(). Fall
+# back to /dev/null if mktemp fails so the tee below can never error.
+PROGRESS_LOG="$(mktemp "${TMPDIR:-/tmp}/super-oracle-progress.XXXXXX")" || PROGRESS_LOG=/dev/null
 
 # A misconfigured/expired MCP server can make codex-fugu exit non-zero even
 # though the oracle answered fine. Judge success by whether output was produced,
 # not by codex's exit code (so a broken MCP never breaks a good run).
 set +e
+start_heartbeat
 if [ -n "$BRIEFING_SRC" ]; then
-  { emit_contract; cat "$BRIEFING_SRC"; } | run 2> >(grep -Ev "$FILTER" >&2)
+  { emit_contract; cat "$BRIEFING_SRC"; } | run 2> >("${GREP_LB[@]}" | tee -a "$PROGRESS_LOG" >&2)
 else
-  { emit_contract; cat; } | run 2> >(grep -Ev "$FILTER" >&2)
+  { emit_contract; cat; } | run 2> >("${GREP_LB[@]}" | tee -a "$PROGRESS_LOG" >&2)
 fi
 rc=$?
+stop_heartbeat
 # Deliberately stay with `set +e` for the rest of the script. The tail does its
 # own explicit error handling (it exits 1 only on genuinely empty output), so
 # re-enabling `set -e` here would add no safety and risks a spurious non-zero
@@ -234,13 +308,17 @@ if [ ! -s "$OUTPUT" ] && [ -s "$ARTIFACTS_DIR/answer.md" ]; then
   echo ">> super-oracle: recovered answer from $ARTIFACTS_DIR/answer.md" >&2
 fi
 
-# List artifacts the oracle actually wrote (ignore our ownership marker). A find
-# failure must abort, not be misread as "no artifacts" (which would silently drop
-# the manifest and delete the dir).
-if ! ARTIFACT_FILES="$(find "$ARTIFACTS_DIR" -type f ! -name "$OWN_MARKER")"; then
+# List artifacts the oracle actually wrote (ignore our ownership marker).
+# A missing dir means "no artifacts": the oracle can legitimately delete its own
+# artifacts dir (it runs with our perms and sees $SUPER_ORACLE_ARTIFACTS_DIR), and
+# a clean run wrote nothing worth keeping. Only a find failure on a dir that DOES
+# exist (e.g. a permissions problem) is a real error worth aborting on.
+if [ ! -d "$ARTIFACTS_DIR" ]; then
+  ARTIFACT_FILES=""
+elif ! ARTIFACT_FILES="$(find "$ARTIFACTS_DIR" -type f ! -name "$OWN_MARKER")"; then
   echo "ERROR: cannot list artifacts dir: $ARTIFACTS_DIR" >&2; exit 1
 fi
-if [ -z "$ARTIFACT_FILES" ]; then
+if [ -z "$ARTIFACT_FILES" ] && [ -d "$ARTIFACTS_DIR" ]; then
   rm -rf "$ARTIFACTS_DIR" 2>/dev/null || true   # only the marker; don't litter
 fi
 

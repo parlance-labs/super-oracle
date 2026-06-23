@@ -28,6 +28,11 @@ Then read the output file and act on it. The script forces Fugu Ultra, leaves
 your MCP servers on, and picks an unattended permission posture automatically
 (see below). For pure review/advice runs, prefer `SUPER_ORACLE_SANDBOX=read-only`.
 
+Because a run takes minutes, the script prints a progress heartbeat to stderr
+every 120s (elapsed time plus the oracle's latest output line) so you can tell it
+is alive. Change it with `-p SECONDS` or `SUPER_ORACLE_PROGRESS_INTERVAL`; `-p 0`
+turns it off. Heartbeats go to stderr only and never touch the `-o` answer.
+
 ## Write a good briefing (this determines quality)
 
 The oracle has **zero prior context**. A terse prompt yields generic output.

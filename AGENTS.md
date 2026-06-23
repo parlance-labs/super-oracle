@@ -85,6 +85,25 @@ into `-o`; any artifacts are listed as a manifest appended to `-o` with a
 "do not delete before reading" note. Never treat oracle-emitted files as
 disposable.
 
+Footgun (found by real runs, not fakes): the oracle runs with our perms and sees
+the exported `$SUPER_ORACLE_ARTIFACTS_DIR`, so it can delete its own artifacts dir
+mid-run. The tail therefore treats a MISSING artifacts dir as "no artifacts" (not
+an error); only a `find` failure on a dir that still exists is fatal. An earlier
+"wrapper exits 1 on a successful real run" mystery was exactly this.
+
+## Progress heartbeat
+A long run feels dead without feedback, so a background `heartbeat` prints to
+stderr every `SUPER_ORACLE_PROGRESS_INTERVAL` seconds (default 120; `-p`
+overrides; `0` disables). It reports elapsed time, idle time, and the oracle's
+latest output line, read from a temp log that mirrors the filtered stderr. It is
+started right before the run and `stop_heartbeat`'d right after (also in
+`cleanup`), and writes only to stderr so `-o` is never touched.
+
+Footgun (found by a tmux test, not unit tests): the stderr filter MUST use `grep
+--line-buffered`. Without it grep block-buffers when its stdout is a pipe, so the
+oracle's reasoning shows up in one clump at the end and the heartbeat log stays
+empty (no latest line, wrong idle time). Keep `--line-buffered` on `GREP_LB`.
+
 ## Releasing
 Marketplace installs key updates off the plugin `version`. Bump `version` in both
 `plugins/super-oracle/.codex-plugin/plugin.json` and

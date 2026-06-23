@@ -1,6 +1,6 @@
 {
   "name": "super-oracle",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Consult Sakana Fugu Ultra via codex-fugu as a second-opinion oracle for deep review, debugging, planning, and research.",
   "author": {
     "name": "Parlance Labs",
