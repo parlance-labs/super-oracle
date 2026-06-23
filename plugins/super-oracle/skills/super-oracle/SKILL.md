@@ -28,10 +28,12 @@ Then read the output file and act on it. The script forces Fugu Ultra, leaves
 your MCP servers on, and picks an unattended permission posture automatically
 (see below). For pure review/advice runs, prefer `SUPER_ORACLE_SANDBOX=read-only`.
 
-Because a run takes minutes, the script prints a progress heartbeat to stderr
-every 120s (elapsed time plus the oracle's latest output line) so you can tell it
-is alive. Change it with `-p SECONDS` or `SUPER_ORACLE_PROGRESS_INTERVAL`; `-p 0`
-turns it off. Heartbeats go to stderr only and never touch the `-o` answer.
+Because a run takes minutes, the script keeps you informed on stderr: a startup
+line that says it is consulting Fugu Ultra and will take a few minutes, an
+elapsed-time heartbeat every 30s (first one within ~15s so it never looks hung),
+and a `done in Xm Ys` line at the end. Change the cadence with `-p SECONDS` or
+`SUPER_ORACLE_PROGRESS_INTERVAL`; `-p 0` turns it off. All of this goes to stderr
+only and never touches the `-o` answer.
 
 ## Write a good briefing (this determines quality)
 
@@ -60,6 +62,9 @@ spawn its own subagents to parallelize. See `reference/briefing-template.md`.
   `timeout` (absent on macOS); let it finish.
 - **Fresh context every call.** Re-supply everything; there is no cross-call
   memory.
+- **Noisy framework warnings are filtered** so the run reads clean. If an answer
+  looks wrong or oddly short, re-run with `SUPER_ORACLE_VERBOSE=1` to see raw
+  stderr (catches the rare case of a silent model fallback or context truncation).
 - **Permission posture is approximated, not inherited.** codex does not expose
   the parent agent's approval/sandbox policy to child processes. The script uses
   `SUPER_ORACLE_SANDBOX` if set; else stays conservative (`--sandbox

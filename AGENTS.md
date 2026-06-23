@@ -91,18 +91,38 @@ mid-run. The tail therefore treats a MISSING artifacts dir as "no artifacts" (no
 an error); only a `find` failure on a dir that still exists is fatal. An earlier
 "wrapper exits 1 on a successful real run" mystery was exactly this.
 
-## Progress heartbeat
-A long run feels dead without feedback, so a background `heartbeat` prints to
-stderr every `SUPER_ORACLE_PROGRESS_INTERVAL` seconds (default 120; `-p`
-overrides; `0` disables). It reports elapsed time, idle time, and the oracle's
-latest output line, read from a temp log that mirrors the filtered stderr. It is
-started right before the run and `stop_heartbeat`'d right after (also in
-`cleanup`), and writes only to stderr so `-o` is never touched.
+## Progress heartbeat (UX)
+A long run feels dead without feedback, so the script keeps the user informed on
+stderr (never `-o`):
+- a startup line that names Fugu Ultra, sets the "few minutes" expectation, and
+  states the answer path (repeated in plain language because a harness's small
+  output window may scroll the technical announce line away);
+- a background `heartbeat` that prints `still working — Xm Ys elapsed · …normal`
+  every `SUPER_ORACLE_PROGRESS_INTERVAL` seconds (default 30; `-p` overrides; `0`
+  disables), with the FIRST beat within ~15s so it never looks hung;
+- a `done in Xm Ys` line at the end (uses `RUN_START`).
 
-Footgun (found by a tmux test, not unit tests): the stderr filter MUST use `grep
---line-buffered`. Without it grep block-buffers when its stdout is a pipe, so the
-oracle's reasoning shows up in one clump at the end and the heartbeat log stays
-empty (no latest line, wrong idle time). Keep `--line-buffered` on `GREP_LB`.
+Design choices learned from testing real Codex/Claude TUIs:
+- Each heartbeat is self-contained (elapsed + "this is normal") because harnesses
+  show only a tail/window of a running command, so a one-time startup note isn't
+  enough.
+- We deliberately DROPPED the old "latest oracle line" feature: codex-fugu's
+  stderr is mostly internal `WARN`/log noise, which looked like errors. A clean
+  elapsed counter is clearer and never alarming. (This also removed the progress
+  temp-log + `tee`.)
+- `grep --line-buffered` is still required so codex-fugu's own stderr streams live
+  rather than clumping at the end (BSD/macOS and GNU both support it).
+- The stderr filter also drops all `WARN codex_` lines (codex-internal warning
+  namespaces, e.g. a 503 plugin-catalog fetch or model-personality notice) so a
+  real run doesn't open with a wall of scary-looking-but-benign warnings. ERROR
+  lines are never filtered. The one blind spot Fugu flagged: a `WARN codex_` could
+  hide a consequential-but-non-fatal notice (silent model fallback off fugu-ultra,
+  context truncation) that still yields a non-empty `-o` and so escapes the
+  empty-output check. Escape hatch: `SUPER_ORACLE_VERBOSE=1` swaps the filter for
+  `cat` to show raw stderr. Don't hand-narrow the regex namespace-by-namespace
+  (brittle as codex adds more); the verbose hatch is the intended recovery path.
+- The heartbeat runs `sleep` as an explicit child killed via a TERM/INT trap, so
+  `stop_heartbeat` never orphans a `sleep` that would hold stderr fds open.
 
 ## Releasing
 Marketplace installs key updates off the plugin `version`. Bump `version` in both
